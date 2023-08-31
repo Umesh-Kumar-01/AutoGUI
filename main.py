@@ -132,23 +132,61 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(1, weight=1)
         self.task_list = []  # contains (indexLabel, Task)
-        self.add_new = customtkinter.CTkButton(self, text="Add Task", command=self.add_item)
+        self.N = 1
+        self.iterations = customtkinter.CTkButton(self,text="Iterations: 1 (auto)", command=self.choose_iterations)
+        self.iterations.grid(row=0,column=0,padx=10,pady=5)
+        self.command_frame = customtkinter.CTkFrame(self)
+        self.command_frame.grid(row=0, column=1, padx=5, pady=5)
+        self.add_new = customtkinter.CTkButton(self.command_frame, text="Add Task", command=self.add_item)
         self.add_new.grid(row=0, column=0, padx=5, pady=5)
-        self.savebutton = customtkinter.CTkButton(self, text="Compile & Save", command=self.save_data)
-        self.savebutton.grid(row=0, column=1, padx=5, pady=5)
+        self.saveButton = customtkinter.CTkButton(self.command_frame, text="Compile & Save", command=self.save_data)
+        self.saveButton.grid(row=0, column=1, padx=5, pady=5)
 
-        self.runbutton = customtkinter.CTkButton(self, text="Run", command=self.run_data)
-        self.runbutton.grid(row=0, column=2, padx=5, pady=5)
+        self.runButton = customtkinter.CTkButton(self.command_frame, text="Run", command=self.run_data)
+        self.runButton.grid(row=0, column=2, padx=5, pady=5)
+
+        self.command_frame.grid_columnconfigure(3, weight=1)
+
+        self.excel_import_button = customtkinter.CTkButton(self, text="Import Input Excel", command=self.import_excel)
+        self.excel_path = customtkinter.StringVar()
+        self.excel_path.set("Excel file should have write permission...")
+        self.excel_path_entry = customtkinter.CTkEntry(self, textvariable=self.excel_path, state="disabled")
+        self.excel_import_button.grid(row=1, column=0, padx=5, pady=5)
+        self.excel_path_entry.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+
+        self.pdf_export_button = customtkinter.CTkButton(self, text="Output Report path", command=self.export_pdf_path)
+        self.pdf_path = customtkinter.StringVar()
+        self.pdf_path.set("Will write/create a pdf file here with name report_{file_name}_{runs}.pdf")
+        self.pdf_path_entry = customtkinter.CTkEntry(self, textvariable=self.pdf_path, state="disabled")
+        self.pdf_export_button.grid(row=2, column=0, padx=5, pady=5)
+        self.pdf_path_entry.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
         self.file_name = file_name
         self.file_dir = file_dir
         self.main_app = main_app
 
+    def choose_iterations(self):
+        dialog = customtkinter.CTkInputDialog(text="Workflow will run for N times\nType in a number N:", title="Test")
+        self.N = dialog.get_input()
+        self.iterations.configure(text=f"Iterations: {self.N}")
+    def export_pdf_path(self):
+        file_path = filedialog.askdirectory(initialdir=self.main_app.initial_dir)
+        self.pdf_path_entry.configure(state="normal")
+        self.pdf_path.set(file_path)
+        self.pdf_path_entry.configure(state="disabled")
+
+    def import_excel(self):
+        file_path = filedialog.askopenfilename(initialdir=self.main_app.initial_dir,
+                                               filetypes=[("Excel Files", "*.xlsx")])
+        self.excel_path_entry.configure(state="normal")
+        self.excel_path.set(file_path)
+        self.excel_path_entry.configure(state="disabled")
+
     def add_item(self):
         indexLabel = customtkinter.CTkLabel(self, text=f"{len(self.task_list) + 1}")
-        indexLabel.grid(row=len(self.task_list) + 1, column=0, padx=5, pady=5)
+        indexLabel.grid(row=len(self.task_list) + 3, column=0, padx=5, pady=5)
         TaskFrame = Task(self)
-        TaskFrame.grid(row=len(self.task_list) + 1, column=1, padx=5, pady=5, sticky="we")
+        TaskFrame.grid(row=len(self.task_list) + 3, column=1, padx=5, pady=5, sticky="we")
         self.task_list.append((indexLabel, TaskFrame))
 
     def delete_all(self):
@@ -246,6 +284,7 @@ class App(customtkinter.CTk):
         self.FOLDER_PATH = None
         self.FILES = {}
         self.TABS = {}
+        self.initial_dir = os.path.expanduser("~/Desktop")
         # configure window
         self.title("GUI Automation")
         self.geometry(f"{1100}x{580}")
@@ -283,9 +322,12 @@ class App(customtkinter.CTk):
 
         self.textbox_label = customtkinter.CTkLabel(self.terminalFrame, text="Output Logs", anchor="w")
         self.textbox_label.grid(row=0, padx=40, sticky="nsew")
+        self.textbox_clear = customtkinter.CTkButton(self.terminalFrame, text="Clear Output Logs",
+                                                     command=self.clear_terminal)
+        self.textbox_clear.grid(row=0, column=1, padx=10, pady=(3, 2), sticky="e")
 
         self.textbox = customtkinter.CTkTextbox(self.terminalFrame)
-        self.textbox.grid(row=1, column=0, padx=(10, 2), pady=(2, 2), sticky="nsew")
+        self.textbox.grid(row=1, columnspan=2, column=0, padx=(10, 5), pady=(2, 10), sticky="nsew")
         self.textbox.columnconfigure(0, weight=1)
         self.textbox.configure(state="disabled")
 
@@ -304,6 +346,11 @@ class App(customtkinter.CTk):
         # set default values
         self.appearance_mode_optionemenu.set("Dark")
         self.print_terminal("Welcome to GUI Automation")
+
+    def clear_terminal(self):
+        self.textbox.configure(state="normal")
+        self.textbox.delete("0.0", "end")
+        self.textbox.configure(state="disabled")
 
     def open_input_dialog_event(self):
         dialog = customtkinter.CTkInputDialog(text="File Name: ", title="Create New File")
@@ -331,10 +378,7 @@ class App(customtkinter.CTk):
             self.open_file(file_name, file_dir)
 
     def create_new_file(self):
-        initdir = self.FOLDER_PATH
-        if initdir is None:
-            initdir = os.path.expanduser("~/Desktop")
-        dialog = filedialog.asksaveasfilename(defaultextension="wf", initialdir=initdir,
+        dialog = filedialog.asksaveasfilename(defaultextension="wf", initialdir=self.initial_dir,
                                               filetypes=[("Workflow Files", "*.wf")])
         file_dir, file_name = os.path.split(dialog)
         # print(file_dir,file_name)
@@ -363,16 +407,13 @@ class App(customtkinter.CTk):
 
     def change_appearance_mode_event(self, new_appearance_mode: str):
         customtkinter.set_appearance_mode(new_appearance_mode)
-        # if new_appearance_mode == "dark":
-        #     self.s.configure("black")
-        # else:
-        #     self.s.configure("white")
 
     def sidebar_button_event(self):
         folder_path = filedialog.askdirectory()
 
         if folder_path:
             self.FOLDER_PATH = folder_path
+            self.initial_dir = folder_path
             wf_files = [file for file in os.listdir(folder_path) if file.endswith(".wf")]
             self.print_terminal(f"Opened Folder {self.FOLDER_PATH}")
             if wf_files:
@@ -395,7 +436,7 @@ class App(customtkinter.CTk):
         else:
             self.sidebar_button_1.pack_forget()
         self.listFileWidget = ScrollableLabelFrame(self.sidebar_frame, command=self.command_file_open)
-        self.listFileWidget.grid(row=1, column=0, sticky="nsew")
+        self.listFileWidget.grid(row=2, column=0, padx=5, sticky="nsew")
         for item in self.FILES.keys():
             self.listFileWidget.add_item(item)
 

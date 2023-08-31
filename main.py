@@ -1,7 +1,6 @@
 import ast
 import datetime
 import os
-import pathlib
 import tkinter
 import tkinter.messagebox
 import customtkinter
@@ -12,6 +11,16 @@ from runner import *
 
 customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
+
+
+def convert_data_type(value):
+    try:
+        ev = ast.literal_eval(value)
+    except Exception as e:
+        ev = value
+    if isinstance(ev, str) and ev.isnumeric():
+        ev = int(ev)
+    return ev
 
 
 class ToplevelWindow(customtkinter.CTkToplevel):
@@ -86,21 +95,12 @@ class ToplevelWindow(customtkinter.CTkToplevel):
             "task_type": self.optionmenu_var.get(),
             "task_description": self.description.get("0.0", "end"),
             "task_data": {
-                key.get(): self.convert_data_type(value.get()) for key, value in self.labels
+                key.get(): convert_data_type(value.get()) for key, value in self.labels
             }
         }
         self.master.master_data = self.new_data
         self.master.set_description(self.description.get("0.0", "end")),
         self.destroy()
-
-    def convert_data_type(self, value):
-        try:
-            ev = ast.literal_eval(value)
-        except Exception as e:
-            ev = value
-        if isinstance(ev, str) and ev.isnumeric():
-            ev = int(ev)
-        return ev
 
 
 class Task(customtkinter.CTkFrame):
@@ -124,7 +124,7 @@ class Task(customtkinter.CTkFrame):
 
     def press_task_tab(self, event):
         self.new_window = ToplevelWindow(self, master_data=self.master_data)
-        self.new_window.focus_force()
+        self.new_window.attributes('-topmost', 'true')
 
 
 class TaskCell(customtkinter.CTkScrollableFrame):
@@ -137,7 +137,7 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         self.savebutton = customtkinter.CTkButton(self, text="Compile & Save", command=self.save_data)
         self.savebutton.grid(row=0, column=1, padx=5, pady=5)
 
-        self.runbutton = customtkinter.CTkButton(self, text="Run",command=self.run_data)
+        self.runbutton = customtkinter.CTkButton(self, text="Run", command=self.run_data)
         self.runbutton.grid(row=0, column=2, padx=5, pady=5)
 
         self.file_name = file_name
@@ -151,13 +151,11 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         TaskFrame.grid(row=len(self.task_list) + 1, column=1, padx=5, pady=5, sticky="we")
         self.task_list.append((indexLabel, TaskFrame))
 
-
     def delete_all(self):
-        for (x,y) in self.task_list:
+        for (x, y) in self.task_list:
             x.destroy()
             y.destory()
         self.task_list.clear()
-
 
     def remove_item(self, index):
         if 0 <= index < len(self.task_list):
@@ -200,8 +198,7 @@ class TaskCell(customtkinter.CTkScrollableFrame):
                 self.task_list[-1][1].set_description(x["task_description"])
             self.main_app.print_terminal(f"File {self.file_name} loaded successfully!")
         except Exception as e:
-            self.main_app.print_terminal(f"Not able to load file. Getting - {e}","ERROR")
-
+            self.main_app.print_terminal(f"Not able to load file. Getting - {e}", "ERROR")
 
     def run_data(self):
         try:
@@ -211,8 +208,11 @@ class TaskCell(customtkinter.CTkScrollableFrame):
                 self.main_app.print_terminal(err)
                 return
             work.run()
+            self.main_app.print_terminal(f"Run is Successfully Operated for file {self.file_name}.")
         except Exception as e:
             self.main_app.print_terminal(f"Not able to Run file. Getting - {e}", "ERROR")
+
+
 class ScrollableLabelFrame(customtkinter.CTkScrollableFrame):
     def __init__(self, master, command=None, **kwargs):
         super().__init__(master, **kwargs)
@@ -315,11 +315,9 @@ class App(customtkinter.CTk):
             self.tabview.set(tab_name)
         else:
             try:
-                # data = import_wkfw_file(path)
                 self.create_tab(tab_name, file_dir)
                 self.print_terminal(f"New File opened: {file_dir}/{tab_name}")
                 self.tabview.set(tab_name)
-                # process_data(data)
                 if file_dir == self.FOLDER_PATH:
                     self.FILES[file_name] = file_dir
 
@@ -356,21 +354,19 @@ class App(customtkinter.CTk):
         self.TABS[tab_name] = file_dir
         self.tabview.tab(tab_name).grid_columnconfigure(0, weight=1)
         self.tabview.tab(tab_name).grid_rowconfigure(0, weight=1)
+        if file_dir == self.FOLDER_PATH:
+            self.add_file_to_current_folder(tab_name + ".wf")
 
-        scrollable_frame = TaskCell(self.tabview.tab(tab_name),self, file_name=tab_name+".wf", file_dir=file_dir)
+        scrollable_frame = TaskCell(self.tabview.tab(tab_name), self, file_name=tab_name + ".wf", file_dir=file_dir)
         scrollable_frame.grid(row=0, column=0, padx=(5, 0), pady=(5, 0), sticky="nsew")
         scrollable_frame.load_data()
 
-        # scrollable_frame.grid_columnconfigure(0, weight=1)
-        # scrollable_frame_switches = []
-        # for i in range(100):
-        #     switch = customtkinter.CTkSwitch(master=scrollable_frame, text=f"CTkSwitch {i}")
-        #     switch.grid(row=i, column=0, padx=10, pady=(0, 20))
-        #     scrollable_frame_switches.append(switch)
-        # scrollable_frame_switches[0].select()
-
     def change_appearance_mode_event(self, new_appearance_mode: str):
         customtkinter.set_appearance_mode(new_appearance_mode)
+        # if new_appearance_mode == "dark":
+        #     self.s.configure("black")
+        # else:
+        #     self.s.configure("white")
 
     def sidebar_button_event(self):
         folder_path = filedialog.askdirectory()
@@ -386,6 +382,10 @@ class App(customtkinter.CTk):
 
     def command_file_open(self, event):
         self.open_file(file_name=event, file_dir=self.FOLDER_PATH)
+
+    def add_file_to_current_folder(self, file):
+        self.listFileWidget.add_item(file)
+        self.FILES[file] = self.FOLDER_PATH
 
     def updateFileList(self, files):
         files = [(file, self.FOLDER_PATH) for file in files]

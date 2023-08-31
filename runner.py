@@ -109,7 +109,7 @@ class WorkFlow():
 
     def run(self):
         for work in self.works:
-            if work.run() is None:
+            if work.run() is not None:
                 print("Task Not Done")
                 break
 

@@ -342,7 +342,7 @@ class App(customtkinter.CTk):
         self.TABS = {}
         self.initial_dir = os.path.expanduser("~/Desktop")
         # configure window
-        self.title("GUI Automation")
+        self.title("AutoGUI: A GUI Automator")
         self.geometry(f"{1100}x{580}")
 
         # configure grid layout (4x4)

@@ -11,9 +11,9 @@ def import_wf_file(fileName,fileDir):
 
 def save_wf_file(fileName,fileDir, data):
     filepath = pathlib.Path.joinpath(pathlib.Path(fileDir), pathlib.Path(fileName))
-    with open(filepath, "w") as file:
-        json.dump(data, file, indent=4)
-
+    if filepath.exists():
+        with open(filepath, "w") as file:
+            json.dump(data, file, indent=4)
 
 BASE_TEMPLATE = """
 {

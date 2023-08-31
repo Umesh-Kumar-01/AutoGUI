@@ -1,4 +1,5 @@
 import ast
+import copy
 import datetime
 import os
 import tkinter
@@ -6,6 +7,8 @@ import tkinter.messagebox
 import customtkinter
 from tkinter import filedialog
 from tkinter import ttk
+
+import render_excel_pdf
 from workflow import *
 from runner import *
 
@@ -13,22 +16,11 @@ customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
 
-def convert_data_type(value):
-    try:
-        ev = ast.literal_eval(value)
-    except Exception as e:
-        ev = value
-    if isinstance(ev, str) and ev.isnumeric():
-        ev = int(ev)
-    return ev
-
-
 class ToplevelWindow(customtkinter.CTkToplevel):
     def __init__(self, master, master_data, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.title("Task")
         self.geometry("400x300")
-        # self.master = master
 
         self.frame = customtkinter.CTkScrollableFrame(self)
         self.frame.grid(row=0, column=0, sticky="nsew")
@@ -95,13 +87,20 @@ class ToplevelWindow(customtkinter.CTkToplevel):
             "task_type": self.optionmenu_var.get(),
             "task_description": self.description.get("0.0", "end"),
             "task_data": {
-                key.get(): convert_data_type(value.get()) for key, value in self.labels
+                key.get(): self.convert_data_type(value.get()) for key, value in self.labels
             }
         }
         self.master.master_data = self.new_data
         self.master.set_description(self.description.get("0.0", "end")),
         self.destroy()
 
+    def convert_data_type(self, value):
+        try:
+            value = str(value)
+            ev = ast.literal_eval(value)
+        except Exception as e:
+            ev = value
+        return ev
 
 class Task(customtkinter.CTkFrame):
     def __init__(self, master, **kwargs):
@@ -133,8 +132,9 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         self.grid_columnconfigure(1, weight=1)
         self.task_list = []  # contains (indexLabel, Task)
         self.N = 1
-        self.iterations = customtkinter.CTkButton(self,text="Iterations: 1 (auto)", command=self.choose_iterations)
-        self.iterations.grid(row=0,column=0,padx=10,pady=5)
+        self.current = 1
+        self.iterations = customtkinter.CTkButton(self, text="1<= i <= N: N = 1", command=self.choose_iterations)
+        self.iterations.grid(row=0, column=0, padx=10, pady=5)
         self.command_frame = customtkinter.CTkFrame(self)
         self.command_frame.grid(row=0, column=1, padx=5, pady=5)
         self.add_new = customtkinter.CTkButton(self.command_frame, text="Add Task", command=self.add_item)
@@ -164,11 +164,20 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         self.file_name = file_name
         self.file_dir = file_dir
         self.main_app = main_app
+        self.excel_data = None
+
+        self.load_data()
+
+        if pathlib.Path(self.excel_path.get()).is_file():
+            self.load_excel_file()
 
     def choose_iterations(self):
-        dialog = customtkinter.CTkInputDialog(text="Workflow will run for N times\nType in a number N:", title="Test")
-        self.N = dialog.get_input()
-        self.iterations.configure(text=f"Iterations: {self.N}")
+        dialog = customtkinter.CTkInputDialog(text="Workflow will run for N times. You are writing flow for ith "
+                                                   "iteration.\nType in a number N:", title="Test")
+        if dialog.get_input() is not None:
+            self.N = int(dialog.get_input())
+            self.iterations.configure(text=f"1<= i <= N: N = {self.N}")
+
     def export_pdf_path(self):
         file_path = filedialog.askdirectory(initialdir=self.main_app.initial_dir)
         self.pdf_path_entry.configure(state="normal")
@@ -181,6 +190,15 @@ class TaskCell(customtkinter.CTkScrollableFrame):
         self.excel_path_entry.configure(state="normal")
         self.excel_path.set(file_path)
         self.excel_path_entry.configure(state="disabled")
+        self.load_excel_file()
+
+    def load_excel_file(self):
+        excel_path = self.excel_path.get()
+        excel_data,error = render_excel_pdf.load_excel_as_dict(excel_path)
+        if excel_data is None:
+            self.main_app.print_terminal(error,"ERROR")
+        else:
+            self.excel_data = excel_data
 
     def add_item(self):
         indexLabel = customtkinter.CTkLabel(self, text=f"{len(self.task_list) + 1}")
@@ -206,11 +224,17 @@ class TaskCell(customtkinter.CTkScrollableFrame):
                 x[0].configure(text=f"{counter + 1}")
 
     def compile_all(self):
+        self.load_excel_file()
         y = []
         for task in self.task_list:
             y.append(task[1].master_data)
 
         data = {
+            "settings": {
+                "N": self.N,
+                "excel_path": self.excel_path.get(),
+                "pdf_path": self.pdf_path.get()
+            },
             "cells": y
         }
         return data
@@ -234,18 +258,50 @@ class TaskCell(customtkinter.CTkScrollableFrame):
                 self.add_item()
                 self.task_list[-1][1].master_data = x
                 self.task_list[-1][1].set_description(x["task_description"])
+
+            y = data.get("settings",None)
+            if y:
+                self.N = int(y["N"])
+                self.iterations.configure(text=f"1<= i <= N: N = {self.N}")
+                self.excel_path.set(y["excel_path"])
+                self.pdf_path.set(y["pdf_path"])
+
             self.main_app.print_terminal(f"File {self.file_name} loaded successfully!")
         except Exception as e:
             self.main_app.print_terminal(f"Not able to load file. Getting - {e}", "ERROR")
 
+    def modify_json_strings(self, json_obj,row):
+        if isinstance(json_obj, dict):
+            for key, value in json_obj.items():
+                if isinstance(value, str) and render_excel_pdf.find_pattern(value):
+                    for match in render_excel_pdf.find_pattern(value):
+                        value = render_excel_pdf.replace_patterns(value,self.excel_data[value[2:-2]][row],match)
+                    json_obj[key] = value
+                elif isinstance(value, (dict, list)):
+                    self.modify_json_strings(value,row=row)  # Recurse into nested objects or lists
+        elif isinstance(json_obj, list):
+            for index, item in enumerate(json_obj):
+                if isinstance(item, (dict, list)):
+                    self.modify_json_strings(item,row=row)
     def run_data(self):
         try:
             data = self.compile_all()
-            work, err = load_workflow(data, name=self.file_name)
-            if work is None:
-                self.main_app.print_terminal(err)
-                return
-            work.run()
+            while self.current < int(self.N)+1:
+                local_data = copy.deepcopy(data)
+                try:
+                    self.modify_json_strings(json_obj=local_data,row=self.current-1)
+                except Exception as e:
+                    raise Exception(self.main_app.print_terminal(f"Check your excel input size and N, Getting - {e}","Error"))
+
+                work, err = load_workflow(local_data, name=self.file_name)
+                if work is None:
+                    self.main_app.print_terminal(err)
+                    return
+                work.run()
+                pyautogui.sleep(2)
+                self.current += 1
+                local_data.clear()
+            self.current = 1
             self.main_app.print_terminal(f"Run is Successfully Operated for file {self.file_name}.")
         except Exception as e:
             self.main_app.print_terminal(f"Not able to Run file. Getting - {e}", "ERROR")
@@ -354,9 +410,12 @@ class App(customtkinter.CTk):
 
     def open_input_dialog_event(self):
         dialog = customtkinter.CTkInputDialog(text="File Name: ", title="Create New File")
-        print("CTkInputDialog: ", dialog.get_input())
+        # print("CTkInputDialog: ", dialog.get_input())
 
     def open_file(self, file_name, file_dir):
+        if file_name=="":
+            self.print_terminal("Filename cannot be empty.")
+            return
         tab_name = file_name[:-3]
         if (tab_name, file_dir) in self.TABS.items():
             self.tabview.set(tab_name)
@@ -365,8 +424,9 @@ class App(customtkinter.CTk):
                 self.create_tab(tab_name, file_dir)
                 self.print_terminal(f"New File opened: {file_dir}/{tab_name}")
                 self.tabview.set(tab_name)
-                if file_dir == self.FOLDER_PATH:
+                if file_dir == self.FOLDER_PATH and file_name not in self.FILES.keys():
                     self.FILES[file_name] = file_dir
+                    self.add_file_to_current_folder(file_name+".wf")
 
             except Exception as e:
                 self.print_terminal(f"Not Able to open file, getting {e}", "ERROR")
@@ -382,6 +442,9 @@ class App(customtkinter.CTk):
                                               filetypes=[("Workflow Files", "*.wf")])
         file_dir, file_name = os.path.split(dialog)
         # print(file_dir,file_name)
+        if file_name=="":
+            self.print_terminal("Filename cannot be empty.")
+            return
         create_wf_file(file_name, file_dir)
         self.open_file(file_name, file_dir)
 
@@ -398,12 +461,9 @@ class App(customtkinter.CTk):
         self.TABS[tab_name] = file_dir
         self.tabview.tab(tab_name).grid_columnconfigure(0, weight=1)
         self.tabview.tab(tab_name).grid_rowconfigure(0, weight=1)
-        if file_dir == self.FOLDER_PATH:
-            self.add_file_to_current_folder(tab_name + ".wf")
 
         scrollable_frame = TaskCell(self.tabview.tab(tab_name), self, file_name=tab_name + ".wf", file_dir=file_dir)
         scrollable_frame.grid(row=0, column=0, padx=(5, 0), pady=(5, 0), sticky="nsew")
-        scrollable_frame.load_data()
 
     def change_appearance_mode_event(self, new_appearance_mode: str):
         customtkinter.set_appearance_mode(new_appearance_mode)

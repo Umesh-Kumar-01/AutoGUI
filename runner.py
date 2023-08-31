@@ -3,13 +3,13 @@ import pyautogui as pg
 import time
 
 TASKS = {
-    "write": ["interval", "text"],
-    "hotkey": ["keys"],
-    "press_key": ["key"],
-    "click": ["coordinates"],
-    "click_on_image": ["wait_seconds", "image_path"],
-    "sleep": ["time"],
-    "Custom PyautoGUI function":['function_name'],
+    "write": ["start_time", "interval", "text"],
+    "hotkey": ["start_time", "keys"],
+    "press_key": ["start_time", "key"],
+    "click": ["start_time", "coordinates"],
+    "click_on_image": ["start_time", "wait_seconds", "image_path"],
+    "sleep": ["start_time", "time"],
+    "Custom PyautoGUI function": ["start_time","function_name"]
 }
 
 
@@ -67,8 +67,7 @@ class Work():
             self.error = e
 
     def run(self):
-        # pyautogui.sleep(self.details["start_time"])
-        pyautogui.sleep(0.25)
+        pyautogui.sleep(self.details["start_time"])
         if self.type == 'write':
             self.write()
         elif self.type == 'hotkey':
